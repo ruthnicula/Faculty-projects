@@ -1,0 +1,539 @@
+
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Feb  8 15:19:09 2023
+
+@author: nicula
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import r2_score
+from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import Ridge
+from sklearn.linear_model import Lasso
+from sklearn.linear_model import ElasticNet
+from sklearn.metrics import mean_squared_error
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from patsy import dmatrices
+
+
+def ziuasapt(zi):
+    if zi.day=="Monday":
+        return 1
+    elif zi.day=="Tuesday":
+        return 2
+    elif zi.day=="Wednesday":
+        return 3
+    elif zi.day=="Thursday":
+        return 4 
+    elif zi.day=="Friday":
+        return 5
+    elif zi.day=="Saturday":
+        return 6
+    elif zi.day=="Sunday":
+        return 7
+    
+    
+def departamente(dep):
+    if dep.department=="sweing":
+        return 1
+    else:
+        return 2
+
+def partialelunii(parti):
+    if parti.quarter=="Quarter1":
+        return 1
+    elif parti.quarter=="Quarter2":
+        return 2
+    elif parti.quarter=="Quarter3":
+        return 3
+    elif parti.quarter=="Quarter4":
+        return 4
+    elif parti.quarter=="Quarter5":
+        return 5
+    
+#Partile lunii (quarters) sunt repartizate in felul urmator
+# -Quarter1: zilele 1-7 ale lunii
+# -Quarter2: zilele 8-14 ale lunii
+# -Quarter3: zilele 15-21 ale lunii
+# -Quarter4: zilele 22-28 ale lunii
+# -Quarter5: zilele 29-31 ale lunii
+
+# importare set de date din csv
+df = pd.read_csv("C:/Users/pc/OneDrive/Desktop/garments_worker_productivity.csv")
+df.info()
+df["ziuasapt"]=df.apply(ziuasapt,axis=1)
+df["departamente"]=df.apply(departamente,axis=1)
+df["partialelunii"]=df.apply(partialelunii,axis=1)
+
+# 1
+df.describe()
+# setul de date contine 1197 de inregistrari
+
+#identificarea variabilele categoriale
+categorial_feature = [i for i in df.columns if df[i].dtype == "object"]
+print(categorial_feature)
+#date,quarter,department,day  - am transformat quarter,departamente si day pentru prelucrarea datelor. date este foarte putin folosita in statistica si am ales sa nu o transformam(sugereaza date)
+
+
+#2-nu putem elimina celulele null deoarece trebuie sa lucram cu wip-work in progress, astfel inlocuim celulele nan cu 0
+#df.fillna(0, inplace=True)
+#print(df)
+
+
+
+plt.ticklabel_format(style='plain') 
+#nr de minute alocate pentru un task pe zi
+sns.countplot(x="ziuasapt", data = df).set(title="nr de minute insumate alocate pentru un task pe zi pe tot parcursul a celor 3 luni ")
+#observam ca ziua 5 nu apare, deci putem considera ca vinerea este probabil zi libera
+#Activitățile de producție sunt repartizate destul de uniform în timpul săptămânii și în weekend, cu excepția zilei de vineri, care pare a fi o zi liberă.
+
+
+#reprezentarea sumei totale de stimulente pe categorii de departamente
+#Prima linie de cod modifică valorile din coloana "department" prin aplicarea unei funcții lambda la fiecare valoare. Funcția lambda verifică dacă valoarea, după eliminarea spațiilor, este egală cu "finishing". În caz afirmativ, înlocuiește valoarea cu "finishing".
+df['department'] = df['department'].apply(lambda x: 'finishing' if x.replace(" ","") == 'finishing' else 'sewing' )
+df.groupby(['department']).incentive.sum().sort_values(ascending = False).plot.bar().set(title="Valoarea stimulentelor totale in functie de departamente")
+# se observa ca cele mai multe stimulente sunt acordate depatamentului de cusut, fiind duble fata de cele de la finisare
+  
+                                                                                    
+#echipa in functie de aparitii din ian 2015 pana in martie 2015
+sns.countplot(x="team", data = df).set(title="Numarul total de aparitii al fiecarei echipe din ian 2015 pana in martie 2015")
+# echipele sunt repartizate destul de uniform, in medie cam 90 de aparitii/echipa. De cele mai multe ori echipa 8 este prezenta cu 110 aparitii, iar de cele mai putine ori echipa 11 cu 90 de aparitii
+
+
+#studiu productie haine pe partile lunii
+sns.countplot(x="partialelunii",data=df).set(title="Numarul total de productie haine pe partile lunii")
+#Mai mult de jumătate din activitățile de producție au loc în primele două trimestre ale lunii.
+# In ultima parte a lunii insemnand intervalul de zile 29-31, s-a inregistrat cea mai slaba productie.
+
+
+#studiu pe departamente, nr de aparitii in cele 3 luni
+sns.countplot(x="department",data=df).set(title="Numarul total de aparitii departamente in cele 3 luni")
+#În total, există cu aproape 200 de sarcini de cusut în plus față de cele de finisare in cele 3 luni.
+
+
+#analiza totala pe echipe cu productie neterminata, numar de produse neterminate
+plt.ticklabel_format(style='plain') 
+df.groupby(['team']).wip.sum().sort_values(ascending = False).plot.bar().set(title="Analiza pe cele 3 luni a echipelor privind numarul de produse neterminate")
+plt.ticklabel_format(style='plain') 
+#observam ca echipa 1 dispune de o productie in curs de executie cu un nr. de produse de 9000, aceasta fiind cea mai mare, pe cand, la polul opus, se afla echipa nr. 5 cu 45000 de produse neterminate
+
+
+#analiza in care zile au existat cei mai multi lucratori intrerupti
+plt.ticklabel_format(style='plain') 
+df.groupby(['day']).idle_men.sum().sort_values(ascending = False).plot.bar().set(title="Analiza cu zilele cu cei mai multi lucratori intrerupti ")
+plt.ticklabel_format(style='plain') 
+#In majoritatea timpului, lucratorii intrerupti sunt impartiti destul de uniform, cu exceptia zilei de luni unde observam ca sunt cei mai putini lucratori neintrerupti, in numar de 10.
+
+#analiza in care echipe au existat cele mai multe modificari de produse
+plt.ticklabel_format(style='plain') 
+df.groupby(['team']).no_of_style_change.sum().sort_values(ascending = False).plot.bar().set(title="Analiza cu echipe unde au fost cele mai multe modificari de produse ")
+plt.ticklabel_format(style='plain') 
+#In graficul rezultat, se evidentiaza echipa 8 cu cele mai multe modificari de produse (28), la capatul celelalt aflandu-se echipa 12 cu 0 modificari de produse pe parcursul celor 3 luni
+
+
+#grafic cu echipele in care sunt cei mai multi lucratori-ian-martie
+plt.ticklabel_format(style='plain') 
+df.groupby(['team']).no_of_workers.sum().sort_values(ascending = False).plot.bar().set(title="Analiza echipe cu cei mai multi lucratori ")
+plt.ticklabel_format(style='plain')
+#Observam ca pe parcursul tuturor echipelor avem uniform impartiti muncitorii. Observam ca, in capatul listei se afla echipa 12 si 6 cu 2300 de muncitori
+
+
+#plotbar in ce zile au fost cele mai multe schimbari de stil
+plt.ticklabel_format(style='plain') 
+df.groupby(['day']).no_of_style_change.sum().sort_values(ascending = False).plot.bar().set(title="Analiza cu zilele in au fost cele mai multe schimbari de stil ")
+plt.ticklabel_format(style='plain') 
+#In zilele de miercuri au existat cele mai multe schimbari de stil(35), iar in zilele de duminica au fost cele mai putine schimbari de stil(25)
+
+
+# Analiza cu primele care au lucrat cel mai mult peste program in minute
+df.groupby(['team']).over_time.sum().sort_values(ascending = False).plot.bar()
+plt.title("Echipe care au lucrat cel mai mult peste program in minute")
+#Observam ca echipa 4 a avut cea mai mare productivitate peste program(580000 minute), in capatul graficului se afla echipa 6 cu cele mai putine minute petrecute peste program(350000). In general, majoritatea echipelor au avut o uniforma repartizare privind munca peste program
+
+
+#Analiza cu echipe care au insumat cele mai multe minute pentru task-uri
+df.groupby(['team']).smv.sum().sort_values(ascending = False).plot.bar()
+plt.title("Echipe care au insumat cele mai multe minute pt taskuri")
+#La prima vedere, graficul arata minutele taskurilor a fiecarei echipe in cele 3 luni. Se vede ca echipa 4 a insumat cele mai multe minute(1800), pe cand echipele 11 si 12, cele mai putine (1100)
+
+
+#Analiza cu echipe care au insumat cele mai multe stimulente
+df.groupby(['team']).incentive.sum().sort_values(ascending = False).plot.bar()
+plt.title("Echipe care au avut cele mai multe stimulente")
+#Din graficul cu bare de mai sus, putem vedea clar că echipa 9 a primit cea mai mare sumă de stimulente, iar majoritatea celorlalte echipe au primit 3/4 din această sumă.
+#Mai mult, observam ca echipa 7 a beneficiat de cele mai putine stimulente (1800) 
+
+
+# #pieplot - valoare departamente procentual
+# #Prima linie de cod modifică valorile din coloana "department" prin aplicarea unei funcții lambda la fiecare valoare. Funcția lambda verifică dacă valoarea, după eliminarea spațiilor, este egală cu "finishing". În caz afirmativ, înlocuiește valoarea cu "finishing".
+df['department'] = df['department'].apply(lambda x: 'finishing' if x.replace(" ","") == 'finishing' else 'sewing' )
+df.department.value_counts().plot.pie(autopct='%.2f %%')
+#Se remarca impartirea departamentelor aproximativ uniforma. Departamentul de cusut are o proportie mai mare, de 57.73 %, pe cand departamentul de finisare de 42.27%
+
+
+#boxploturi, analiza distributiei, permitand sa vedem valorile minime,prima valoare, mediana, a treia valoare si valoarea maxima
+plt.figure(figsize=(5,5))
+plt.boxplot(df["targeted_productivity"])
+plt.title("Distributia productivitatii targret")
+plt.show()
+#Se poate vedea ca numarul general de target de productivitate este de 0,75 adica 75%.
+#Tinand cont de linia medianei se afla la mijlocul casetei, se poate spune ca valorile impuse sunt simetrice
+
+
+plt.figure(figsize=(5,5))
+plt.boxplot(df["over_time"])
+plt.title("Distributia muncii peste program")
+plt.show()
+#Se observa ca minumul de lucru peste program este 0, maximul este 25920(punctul de sus), iar mediana 4567.460317
+
+
+plt.figure(figsize=(5,5))
+plt.boxplot(df["no_of_workers"])
+plt.title("Distributia numarului de muncitori")
+plt.show()
+#Se observa ca minimulde muncitori este 2, maximul de muncitori este 89, iar media este 35
+
+
+plt.figure(figsize=(5,5))
+plt.boxplot(df["smv"])
+plt.title("Distributia timpurilor alocate pt task uri")
+plt.show()
+#Minimul de timp alocat pentru task-uri este 3 minute, maximul de timp alocat este de 55, iar media de 15 minute
+
+
+plt.figure(figsize=(5,5))
+plt.boxplot(df["actual_productivity"])
+plt.title("Distributia productivitatii actuale")
+plt.show()
+#Minimul de productivitate este de 0,24(primul cerc), maximul de productivitate este de 1.12, media 0.73
+
+
+# relatia distributiei productivitatii actuale pentru toate datele
+plt.figure(figsize=(20,8))
+sns.boxplot(x='date', y='actual_productivity', data=df, order=df.groupby('date')['actual_productivity'].median().sort_values().index)
+sns.stripplot(x='date', y='actual_productivity', data=df, color='black', size=3)
+plt.xticks(rotation=90)
+plt.xlabel("Date (ordered by median actual_productivity)")
+plt.ylabel("actual_productivity")
+plt.title("Productivitatea actuala pentru toate datele")
+plt.show()
+#Acest lucru confirmă ca trimestrul 5 este în medie mult mai productiv decât celelalte trimestre. De asemenea, trimestrele 3 și 4 par a fi cele în care productivitatea_efectivă scade cel mai mult.
+
+
+plt.scatter(df["targeted_productivity"], df["actual_productivity"], c=df["departamente"], cmap="coolwarm")
+plt.xlabel("targeted_productivity")
+plt.ylabel("actual_productivity")
+plt.title("Scatterplot cu relatia dintre productivitatea actuala si cea target")
+plt.colorbar()
+plt.show()
+#Punctele sunt în mare parte grupate de-a lungul unei linii drepte cu pantă ascendentă, acest lucru indică o corelație pozitivă între productivitatea actuala si cea target, ceea ce înseamnă că atunci cand productivitatea target a fost mare si cea actuala a fost la fel.
+#există câteva puncte care se îndepărtează în mod semnificativ de grupul principal, acestea ar putea fi valori aberante și ar merita o investigație suplimentară. De exemplu, o productivitate target scăzuta, dar o productivitate reală ridicată, ar putea indica faptul că obiectivul a fost stabilit prea jos sau că au existat evenimente sau factori neașteptați care au contribuit la creșterea productivității. O productivitate țintă ridicată, dar o productivitate reală scăzută ar putea indica faptul că obiectivul a fost stabilit prea sus sau că au existat probleme care au împiedicat productivitatea.
+
+
+sns.displot(df['actual_productivity'])
+df.actual_productivity.hist()
+plt.title("Distributia productivitatii actuale")
+#actual_productivity are mai multe valori inferioare, ceea ce poate duce la o distorsiune negativă, deoarece se poate observa o coadă mai lungă în stânga.
+#Coada mai lunga in stanga a unei distributii inseamna ca exista o concentratie mai mare de valori mai mici decat media
+
+
+sns.displot(df['no_of_workers'])
+df.no_of_workers.hist()
+plt.title("Distributia numarului de lucratori")
+#Numărul de lucrători dintr-o echipă poate varia foarte mult, majoritatea având în jur de 8 sau 58 de lucrători.
+
+
+sns.displot(df['smv'])
+df.smv.hist()
+plt.title("Distributia minutelor alocate pentru un task")
+#Timpul alocat pentru o activitate este de obicei în limita a 20 de minute, majoritatea fiind de aproximativ 3 minute.
+
+
+sns.displot(df['targeted_productivity'])
+df.targeted_productivity.hist()
+plt.title("Distributia productivitatii target")
+#Productivitatea țintită este stabilită la 0,8 în cea mai mare parte a timpului.
+
+#Cele mai multe dintre atributele noastre sunt puternic înclinate, atât pozitiv, cât și negativ, cu excepția probabil a productivității_efective și a echipei, care par a fi aproximativ normale și, respectiv, uniforme.
+#12 echipe care lucrează cu o distribuție destul de uniformă a activităților. Echipele 1 și 2 au cel mai mare număr de activități.
+
+#----------------------------
+#cele mai importante variabile independente - smv, wip, over_time, incentive, no_of_workers, ziuasapt
+#utilizate des la analize
+#variabila dependenta - actual_productivity
+#------------------------------
+
+#mediane
+#Mediana coloanei "smv" este 15,26;iar mediana coloanei  "wip" este 586.0 Aceasta înseamnă că jumătate din valorile din coloana "smv" sunt #mai mari sau egale cu 15,26 si 586.0 și jumătate sunt mai mici sau egale cu 15,26 si 586.0. Mediana este o măsură a #tendinței centrale și este utilizată pentru a determina punctul median al unui set de date.
+df["smv"].median()
+#15.26
+df["wip"].median()
+#586.0
+
+#dispersii
+# Rezultatele oferă o indicație despre cât de răspândite sunt valorile din coloanele "smv","wip,"over_time".
+#O valoare ridicată a varianței înseamnă că valorile sunt  repartizate pe un interval mare, în timp ce o valoare scăzută a varianței indică faptul că valorile sunt grupate în apropierea mediei. 
+#În acest caz, varianța coloanei "smv" este de 119.65400129703298,varianța coloanei "wip" este de 3371354.8595525227  si varianța coloanei "over_time" este de 11205250.31692982 ceea ce sugerează că valorile din coloană sunt răspândite pe un interval relativ mare.
+
+dispersiesmv = np.var(df["smv"])
+print(dispersiesmv)
+#dispersia minutelor pentru taskuri = 119.65400129703298
+
+dispersiewip = np.var(df["wip"])
+print(dispersiewip)
+#dispersia lucrului in progres = 3371354.8595525227
+
+dispersieovt = np.var(df["over_time"])
+print(dispersieovt)
+#dispersia lucrului peste program = 11205250.31692982
+
+#deviatii standard
+#Deviatia standard poate fi utilizată pentru a estima incertitudinea sau intervalul de confidență pentru estimările făcute pe baza datelor. Valoarea deviației standard poate fi interpretată în aceleași unități de măsură ca și datele din set. Valori mari ale deviației standard indică o dispersie mare a valorilor în setul de date.
+#Rezultatul calculului deviației standard, 10.938647141993062,1836.1249574994952, 11205250.31692982 sunt  deviațiile  standard a valorilor din coloana "smv","wip","over_time" . În acest caz, abaterea standard a coloanelor  indică faptul că valorile din coloană sunt dispersate pe un interval de aproximativ 10,94 unități,1836 unitati si 11205250 unitati (ceea ce inseamna ca sunt  repartizate pe un interval relativ mare) . Abaterea standard este o măsură de dispersie utilizată pe scară largă .
+
+deviatia_standardsmv=np.std(df["smv"])
+print(deviatia_standardsmv)
+#10.938647141993062
+
+deviatia_standardwip=np.std(df["wip"])
+print(deviatia_standardwip)
+#1836.1249574994952
+
+
+deviatia_standardover_time=np.var(df["over_time"])
+print(deviatia_standardover_time)
+#11205250.31692982
+
+#calculare cvartile
+valori = df['smv']
+#calculam cuartilele pentru timpul task urilor
+Q1 = np.percentile(valori, 25)
+Q2 = np.percentile(valori, 50)
+Q3 = np.percentile(valori, 75)
+print("Prima cuartilă:", Q1)
+print("Mediana:", Q2)
+print("A treia cuartilă:", Q3)
+#Prima cuartilă: 3.94,Mediana: 15.26,A treia cuartilă: 24.26
+#Q3 este mult mai mare decat mediana, distributia are o coada lunga spre dreapta, înseamnă că majoritatea valorilor ce sunt timpul alocat pt task sunt mai mari decât valoarea Q3. În alte cuvinte, această situație indică faptul că există o concentrație mai mare de valori ridicate în setul de date, în comparație cu valorile mai mici.În acest caz, poți să presupui că există o valoare sau un număr mai mare de valori care se situează în partea superioară a intervalului, în comparație cu partea inferioară a intervalului. 
+# 75% din date sunt mai mici decat 24.26, 25% mai mari decat acestea.
+
+
+#selectare valoarea
+valori = df['actual_productivity']
+#calculam cuartilele pentru lucrul in progres
+Q1 = np.percentile(valori, 25)
+Q2 = np.percentile(valori, 50)
+Q3 = np.percentile(valori, 75)
+print("Prima cuartilă:", Q1)
+print("Mediana:", Q2)
+print("A treia cuartilă:", Q3)
+#Prima cuartilă:0.650307143,Mediana:0.773333333,A treia cuartilă: 0.850252525
+#Q3 este mult mai mare decat mediana, distributia are o coada lunga spre dreapta
+# Cuartile sunt valori care impart datele intr-un set de patru intervale egale, fiecare interval cuprinzand 25% din date.
+# Primul cuartil (Q1) reprezinta valoarea sub care se afla 25% din date, adica primul 25% din date sunt mai mici decat Q1.
+# Al doilea cuartil (Q2), cunoscut si sub denumirea de mediana, reprezinta valoarea sub care se afla 50% din date, adica jumatate din date sunt mai mici decat Q2.
+# Al treilea cuartil (Q3) reprezinta valoarea sub care se afla 75% din date, adica ultimul 25% din date sunt mai mari decat Q3.
+
+
+# corelatii
+#Observam ca o legatura stransa este intre intre numarul de lucratori si munca peste program (0.73), intre departamente si numarul de lucratori, de asemenea se afla o legatura foarte stransa(0.94). 
+
+dffiltre = df[["team","targeted_productivity"]]
+dfcorr=dffiltre.corr()   
+sns.heatmap(data=dffiltre.corr(),annot=True,cmap="YlGnBu", cbar=False)
+
+
+dffiltre = df[["no_of_workers","over_time"]]
+dfcorr=dffiltre.corr()   
+sns.heatmap(data=dffiltre.corr(),annot=True,cmap="YlGnBu", cbar=False)
+
+dffiltre = df[["no_of_workers","departamente"]]
+dfcorr=dffiltre.corr()   
+sns.heatmap(data=dffiltre.corr(),annot=True,cmap="YlGnBu", cbar=False)
+
+# Observam ca o legatura foarte slaba se afla intre departamente si team(-0.032), de asemenea, tot o legatura slaba se afla intre departamente si numarul de schimbari de stiluri(0.3). 
+dffiltre = df[["no_of_style_change","departamente"]]
+dfcorr=dffiltre.corr()   
+sns.heatmap(data=dffiltre.corr(),annot=True,cmap="YlGnBu", cbar=False)
+
+
+dffiltre = df[["team","departamente"]]
+dfcorr=dffiltre.corr()   
+sns.heatmap(data=dffiltre.corr(),annot=True,cmap="YlGnBu", cbar=False)
+
+
+# Observam ca legaturi inexistente sunt intre echipa si munca peste program(0.097). Aceiasi legatura inexistenta este intre targetul productivitatii si timpul alocat taskurilor(0.069)
+
+
+#corelatie totala
+corr2 = df.corr(method = 'pearson')
+plt.figure(figsize=(15,5))
+sns.heatmap(data=corr2, annot=True)
+#Majoritatea corelațiilor dintre atribute sunt slabe și nesemnificative. Există doar câteva corelații pozitive moderate și puternice.
+#smv și no_of_workers au o corelație pozitivă puternică. Acest lucru are sens, deoarece ne-am aștepta ca, cu cât sarcina este mai lungă, cu atât mai mulți lucrători sunt alocați acesteia.
+#orele suplimentare și no_of_workers au o corelație pozitivă moderată, la fel ca și orele suplimentare și smv.
+#idle_time și idle_men au, de asemenea, o corelație pozitivă moderată, cel mai probabil pentru că sunt în mare parte 0-uri.
+##corelatie totala
+corr2 = df.corr(method = 'pearson')
+plt.figure(figsize=(15,5))
+sns.heatmap(data=corr2, annot=True)
+#Majoritatea corelațiilor dintre atribute sunt slabe și nesemnificative. Există doar câteva corelații pozitive moderate și puternice.
+#smv și no_of_workers au o corelație pozitivă puternică. Acest lucru are sens, deoarece ne-am aștepta ca, cu cât sarcina este mai lungă, cu atât mai mulți lucrători sunt alocați acesteia.
+#orele suplimentare și no_of_workers au o corelație pozitivă moderată, la fel ca și orele suplimentare și smv.
+#idle_time și idle_men au, de asemenea, o corelație pozitivă moderată, cel mai probabil pentru că sunt în mare parte 0-uri.
+# lipsa legatura r<= 0.2
+#smv si no_of_style_change 0.11
+#wip actual_productivity 0.13
+#idle_men si no_of_workers 0.05
+#legaturi directe,slabe,regasim intre  0.2-0.5
+#no_of_workers si over_time 0.35
+# over_time si smv 0.26
+#targeted_productivity si incentive 0.49
+#legaturi puternice 0.7 si 0.95 
+#actual-productivity si incentive 0.8
+#targeted-productivity si actual_productivity 0.7
+#In general, exista legaturi inverse lipsa intre parametrii nostri dpdv al corelatiilor
+#-0.06 intre idle_men si targeted_productivity 
+#-0.038 intre wip si smv 
+#legaturi inverse ,slabe
+#smv si team -0.37
+#no_of_style_change si incentive -0.32
+
+
+#---------------------------------
+
+# regresii si multicoliniaritate
+
+df.dropna(axis =0, inplace=True)
+df.fillna(0, inplace=True)
+
+x_cols = ['smv', 'wip', 'over_time','incentive', 'no_of_workers','team','ziuasapt', 'partialelunii','targeted_productivity']
+X = df[x_cols]
+y = df["actual_productivity"]
+reg = LinearRegression()
+reg.fit(X, y)
+y_pred = reg.predict(X)
+print("constanta= ", reg.intercept_)
+print("lista coef= ", reg.coef_)
+#dreaptaderegresie= 0.19675906117179487+-3.13922032e-03*19.87+-5.00232255e-07*733+-2.01998747e-06*6000+3.25520875e-03*34+9.85037953e-04*55+-3.04264366e-03*2+(-1.70879370e-03)*4+--4.06158086e-03*1+6.23650080e-01*0.75
+#constanta=  0.19675906117179487
+#lista coef=  [-3.13922032e-03 -5.00232255e-07 -2.01998747e-06  3.25520875e-03 9.85037953e-04 -3.04264366e-03 -1.70879370e-03 -4.06158086e-03 6.23650080e-01]
+
+#index = 8  - prezicere = 0.74, val tabel = 0.75
+#actprod= 0.19675906117179487+-3.13922032e-03*19.87+-5.00232255e-07*733+-2.01998747e-06*6000+3.25520875e-03*34+9.85037953e-04*55+-3.04264366e-03*2+(-1.70879370e-03)*4+--4.06158086e-03*1+6.23650080e-01*0.75
+
+#index = 26 -prezicere = 0.81, val tabel = 0.80
+#actprod= 0.19675906117179487+-3.13922032e-03*26.16+-5.00232255e-07*1261+-2.01998747e-06*7080+3.25520875e-03*50+9.85037953e-04*59+-3.04264366e-03*2+(-1.70879370e-03)*4+--4.06158086e-03*1+6.23650080e-01*0.8
+
+X_train,X_test,y_train,y_test=train_test_split(X,y,test_size=0.3,random_state=100)
+reg2 = LinearRegression()
+model = reg2.fit(X_train, y_train)
+print("constanta set antrenament= ", model.intercept_)
+print("lista coef set antrenament= ", model.coef_)
+#constanta set antrenament=  0.19109039624101198
+#lista coef set antrenament=  [-2.32687964e-03 -1.10422942e-06 -3.39214731e-06  3.50412679e-03 8.62098827e-04 -2.93909671e-03 -2.37368113e-03 -4.74056275e-03 6.15583678e-01]
+
+#predictie pe setul de date test
+predictie = model.predict(X_test)
+print("predictie: " , predictie)
+print("y_test: " , y_test)
+#predictie:  [0.85486502 0.84006804 .. 0.9695346  0.72249883 0.63956592 0.83210187]
+#:  198    0.850522
+#130    0.850502
+#809    0.750621
+#800    0.355428
+#888    0.800402
+  
+#369    0.500241
+#696    0.900471
+#968    0.799983
+#254    0.499980
+#644    0.800402
+#Name: actual_productivity, Length: 208, dtype: float64
+
+rmse = np.sqrt(mean_squared_error(y, y_pred))
+print("RMSE:", rmse)
+#RMSE:  0.07132081084605862
+# în acest caz, valoarea RMSE de 0.09012262602437218 este relativ mică, ceea ce sugerează că modelul face predicții relativ corecte
+# Eroarea pătratică medie pătratică (RMSE) măsoară diferența dintre valorile reale și valorile prezise. Cu cât valoarea RMSE este mai mică, cu atât modelul se potrivește mai bine datelor.
+# RMSE se calculează prin luarea rădăcinii pătrate a mediei pătratelor diferențelor dintre valorile reale și cele prezise. Diferența dintre fiecare valoare reală și cea prezisă se ridică la pătrat pentru a se asigura că toate diferențele sunt pozitive, iar apoi se ia media diferențelor la pătrat. În cele din urmă, se ia rădăcina pătrată a mediei pentru a obține valoarea RMSE în unitățile originale ale datelor.
+# O valoare RMSE mai mică indică faptul că modelul este mai corect în predicțiile sale
+
+
+r_patrat = r2_score(y_true = y_test, y_pred = predictie)
+print(r_patrat)
+#0.7850674136305194
+
+model_LR= LinearRegression()
+model_LR.fit(X_train,y_train)
+
+y_prezis=model_LR.predict(X_test)
+print("r^2=", r2_score(y_test,y_prezis))
+#r^2= 0.7850674136305194 
+#Aceasta înseamnă că modelul Ridge cu alpha=50 este capabil să prezică variabila dependentă cu o acuratețe de 78,51%.
+
+
+model_Ridge= Ridge(alpha=50)
+model_Ridge.fit(X_train,y_train)
+
+y_prezis_Ridge=model_Ridge.predict(X_test)
+print("r^2 _ alpha=50", r2_score(y_test,y_prezis))
+model_Ridge.coef_
+#r^2 _ alpha=50 0.7850674136305194
+#array([-5.29805010e-04, -1.24681745e-06, -6.11827249e-06,  0.00000000e+00, 4.75603586e-03, -1.24342679e-04])
+# indicatorul ne arata ca nr de minute alocate pt un task, produsele neterminate ,timpul peste program a fiecarei echipe, valoarea stimulentului financiar care motiveaza o actiune 
+#nr asociat fiecarei echipe  si comparatia cu ziua saptamanii  influenteaza productivitatea actuala in proprotie de 78.5%,
+#ceilalti factori influentand in proportie de 21.5%
+#Parametrul alpha este setat la 50, care este un termen de regularizare care ajută la prevenirea supraajustării prin adăugarea unei penalizări la coeficienți.
+#Modelul este adaptat la datele de instruire X_train și y_train utilizând metoda fit, iar predicțiile pentru datele de testare X_test sunt stocate în variabila y_prezis_Ridge.
+#Scorul R^2 pentru predicții se calculează cu ajutorul funcției r2_score din modulul sklearn.metrics și se imprimă.
+#În cele din urmă, coeficienții modelului sunt accesați cu ajutorul atributului coef_ și sunt afișați.
+
+
+
+model_Lasso= Lasso(alpha=0.1)
+model_Lasso.fit(X_train,y_train)
+
+y_prezis_Lasso=model_Lasso.predict(X_test)
+print("r^2 _ alpha=1", r2_score(y_test,y_prezis))
+print(model_Lasso.coef_)
+#r^2 _ alpha=1 0.7850674136305194
+#[-0.00000000e+00 -8.05273096e-07 -6.45159767e-06  0.00000000e+00 4.62974598e-03 -0.00000000e+00]
+
+
+model_EN=ElasticNet(alpha=10,l1_ratio=0.5)
+model_EN.fit(X_train,y_train)
+
+y_prezis_EN=model_EN.predict(X_test)
+print("r^2 _ alpha =1:", r2_score(y_test,y_prezis_EN))
+print(model_EN.coef_)
+# Valoarea coeficientului de determinare (R^2) pentru acest model este de 0,02117909686508379, ceea ce este relativ scăzut. Acest lucru sugerează că modelul explică doar 2,11% din variabilitatea variabilei țintă. Coeficienții modelului sunt, de asemenea, în mare parte 0, doar două caracteristici având coeficienți care nu sunt zero.
+#r^2 _ alpha =1: 0.02117909686508379
+#[-0.00000000e+00  9.34679997e-06 -8.41505945e-07  0.00000000e+00 0.00000000e+00 -0.00000000e+00]
+
+
+#multicoliniaritate
+#Acest cod calculează factorul de inflație a varianței (VIF) pentru un set de variabile independente. VIF este o măsură a gradului de creștere a varianței unui coeficient de regresie estimat din cauza prezenței altor variabile în model.
+#Datele sunt mai întâi extrase din cadrul de date df și stocate într-un nou cadru de date dfVIF care include variabilele smv, wip, over_time, incentive și no_of_workers.
+#Funcția dmatrices din biblioteca patsy este apoi utilizată pentru a pregăti datele pentru analiza de regresie. Variabila dependentă actual_productivity și variabilele independente sunt specificate cu ajutorul unui șir de formule, iar datele rezultate sunt stocate în variabilele y și X.
+#Se creează un nou cadru de date vif_df pentru a stoca rezultatele calculului VIF. Funcția variance_inflation_factor din modulul statsmodels.stats.outliers_influence este utilizată pentru a calcula VIF pentru fiecare variabilă din model.
+#În cele din urmă, rezultatele sunt tipărite sub forma unui cadru de date în care variabilele sunt afișate în prima coloană, iar VIF-urile corespunzătoare acestora în a doua coloană.
+
+dfVIF = df[["actual_productivity", "smv", "wip", "over_time","incentive", "no_of_workers"]]
+y, X = dmatrices('actual_productivity~smv+wip+over_time+incentive+no_of_workers',data=dfVIF, return_type='dataframe')
+vif_df = pd.DataFrame()
+vif_df['variable'] = X.columns 
+vif_df['VIF'] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+print(vif_df)
+#1            smv   1.559681
+#2            wip   1.030823
+#3      over_time   1.153174
+#4      incentive   1.071881
+#5  no_of_workers   1.632356
+#intrucat toate valorile sunt apropiate de 1, multicoliniaritatea nu este o problema (trebuie sa fie intre 1 si 5)
+
